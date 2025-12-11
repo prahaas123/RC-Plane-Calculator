@@ -131,6 +131,22 @@ export const PropCalculator: React.FC = () => {
 
   }, [propDiam, propPitch, blades, kv, escRating, battCells, battCapacity, battParallel, battType, numMotors]);
 
+  const downloadCSV = () => {
+    if (chartData.length === 0) return;
+    const headers = ["Wind Speed (m/s)", "Total Thrust (g)"];
+    const rows = chartData.map(row => [row.windSpeed, row.thrust].join(","));
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "dynamic_thrust_data.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6 pb-20">
       
@@ -238,43 +254,54 @@ export const PropCalculator: React.FC = () => {
       </div>
 
       {/* --- Section 3: Graph (Bottom) --- */}
-      <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 h-96">
-          <div className="flex justify-between items-center mb-6">
+      <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 h-[32rem] flex flex-col">
+          <div className="flex justify-between items-center mb-4">
             <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Dynamic Thrust vs Wind Speed</h3>
             <span className="text-xs text-slate-500">Total Thrust (g)</span>
           </div>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis 
-                dataKey="windSpeed" 
-                stroke="#94a3b8" 
-                fontSize={12} 
-                label={{ value: 'Wind Speed (m/s)', position: 'insideBottom', offset: -10, fill: '#94a3b8' }} 
-              />
-              <YAxis 
-                stroke="#94a3b8" 
-                fontSize={12} 
-                width={60}
-              />
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#f1f5f9' }}
-                itemStyle={{ color: '#818cf8' }}
-                formatter={(value: number) => [`${value} g`, 'Thrust']}
-                labelFormatter={(label) => `${label} m/s`}
-              />
-              <Legend verticalAlign="top" height={36}/>
-              <Line 
-                type="monotone" 
-                dataKey="thrust" 
-                name="Total Thrust"
-                stroke="#818cf8" 
-                strokeWidth={3}
-                dot={{ r: 4, fill: '#818cf8', strokeWidth: 0 }}
-                activeDot={{ r: 6, fill: '#c7d2fe' }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          <div className="flex-grow w-full min-h-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 40 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis 
+                  dataKey="windSpeed" 
+                  stroke="#94a3b8" 
+                  fontSize={12} 
+                  label={{ value: 'Wind Speed (m/s)', position: 'insideBottom', offset: -10, fill: '#94a3b8' }} 
+                />
+                <YAxis 
+                  stroke="#94a3b8" 
+                  fontSize={12} 
+                  width={60}
+                />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#f1f5f9' }}
+                  itemStyle={{ color: '#818cf8' }}
+                  formatter={(value: number) => [`${value} g`, 'Thrust']}
+                  labelFormatter={(label) => `${label} m/s`}
+                />
+                <Legend verticalAlign="top" height={36}/>
+                <Line 
+                  type="monotone" 
+                  dataKey="thrust" 
+                  name="Total Thrust"
+                  stroke="#818cf8" 
+                  strokeWidth={3}
+                  dot={{ r: 4, fill: '#818cf8', strokeWidth: 0 }}
+                  activeDot={{ r: 6, fill: '#c7d2fe' }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-4 flex justify-end">
+             <button 
+               onClick={downloadCSV}
+               className="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold py-2 px-4 rounded transition-colors flex items-center gap-2 border border-slate-600"
+             >
+               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+               Download CSV
+             </button>
+          </div>
       </div>
 
     </div>
