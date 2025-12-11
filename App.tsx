@@ -6,14 +6,14 @@ import { Page } from './types';
 import { Icons } from './constants';
 
 const App: React.FC = () => {
-  const [activePage, setActivePage] = useState<Page>(Page.OVERALL);
+  const [activePage, setActivePage] = useState<Page>(Page.PROP);
 
   const renderContent = () => {
     switch (activePage) {
       case Page.OVERALL: return <OverallSetup />;
       case Page.PROP: return <PropCalculator />;
       case Page.CG: return <CGCalculator />;
-      default: return <OverallSetup />;
+      default: return <PropCalculator />;
     }
   };
 
@@ -40,14 +40,14 @@ const App: React.FC = () => {
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center text-white font-bold text-xl">A</div>
               <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400 hidden sm:block">
-                AeroCalc Pro
+                AeroCalc - Made by Prahaas
               </h1>
             </div>
             
             <nav className="flex space-x-1 bg-slate-900/50 p-1 rounded-xl">
-              <NavButton page={Page.OVERALL} label="Setup" icon={Icons.Plane} />
               <NavButton page={Page.PROP} label="Prop" icon={Icons.Propeller} />
               <NavButton page={Page.CG} label="CG" icon={Icons.Scale} />
+              <NavButton page={Page.OVERALL} label="Setup" icon={Icons.Plane} />
             </nav>
           </div>
         </div>
@@ -61,7 +61,7 @@ const App: React.FC = () => {
       {/* Footer */}
       <footer className="border-t border-slate-800 mt-auto py-6">
         <div className="max-w-7xl mx-auto px-4 text-center text-slate-500 text-sm">
-          <p>© {new Date().getFullYear()} AeroCalc Pro. Estimations only - always verify physically.</p>
+          <p>© {new Date().getFullYear()} AeroCalc Pro. MAde by Prahaas Kotni. Estimations only - always verify physically.</p>
         </div>
       </footer>
     </div>
