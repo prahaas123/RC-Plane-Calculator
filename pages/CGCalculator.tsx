@@ -1,23 +1,21 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { InputGroup } from '../components/InputGroup';
-import { ResultCard } from '../components/ResultCard';
 import { Icons } from '../constants';
 
 // --- Types ---
 interface WingPanel {
   id: number;
   tip: number;   // Tip Chord (cm)
-  sweep: number; // Sweep distance (cm)
+  sweep: number; // Sweep distance (cm) - X offset of tip LE relative to root LE
   span: number;  // Panel Span (cm)
 }
 
 interface SurfaceAnalysis {
-  area: number;        // cm2 (full wing)
-  span: number;        // cm (full wing)
-  mac: number;         // cm
-  macPosition: { x: number; y: number }; // coords relative to surface root LE
-  acPosition: { x: number; y: number };  // Aerodynamic center relative to surface root LE
-  aspectRatio: number;
+  area: number;        // cm2 (total both sides)
+  span: number;        // cm (total)
+  mac: number;         // cm (Mean Aerodynamic Chord)
+  acX: number;         // cm (Aerodynamic Center X relative to Surface Root LE)
   rootChord: number;
 }
 
@@ -66,69 +64,65 @@ const PanelInputRow: React.FC<{
 // --- Math Helpers ---
 
 const calculateSurface = (rootChord: number, panels: WingPanel[]): SurfaceAnalysis => {
-  let totalArea = 0;
-  let totalMacMoment = 0;
-  let totalAcMomentX = 0; // Moment of AC location weighted by area
-  let currentY = 0;
-  let currentRootLE_X = 0; // X position of the current panel's root LE
-  let totalSpan = 0;
-
   let currentRoot = rootChord;
+  let currentX_LE = 0; // X position of LE at start of panel (relative to surface root)
+  
+  // Accumulators
+  let sumArea = 0;
+  let sumAreaMac = 0; // Area * MAC
+  let sumAreaAcX = 0; // Area * AC_X_Global
+  let totalSpanHalf = 0;
 
   panels.forEach(panel => {
-    // Trapezoid geometry
-    const root = currentRoot;
-    const tip = panel.tip;
-    const h = panel.span; // height of trapezoid (spanwise)
-    const sweep = panel.sweep; // geometric sweep of LE (x offset of tip LE relative to root LE)
+    const Cr = currentRoot;
+    const Ct = panel.tip;
+    const b = panel.span; // Panel Span
+    const sweep = panel.sweep; // X offset of tip LE from root LE
 
-    const area = (root + tip) * h / 2;
-    
-    // Panel MAC length
-    const mac = (2 / 3) * (root + tip - (root * tip) / (root + tip));
-    
-    // Panel MAC Y position (relative to panel root)
-    const macY_local = (h / 3) * ((root + 2 * tip) / (root + tip));
-    
-    // Panel MAC LE X position (relative to panel root LE)
-    // Geometric interpolation along the Leading Edge
-    // The LE is a straight line from (0,0) to (h, sweep) in local panel coords
-    const macLE_X_local = (macY_local / h) * sweep;
+    // 1. Panel Area (Si)
+    const Si = ((Cr + Ct) / 2) * b;
 
-    // Aerodynamic Center of Panel (approx at 25% of MAC)
-    // Global coords (relative to Surface Root LE)
-    const panelRootLE_Y = currentY;
-    
-    // AC Location in Global Coords for this panel
-    const absMacLE_X = currentRootLE_X + macLE_X_local;
-    // const absMacCenter_Y = currentY + macY_local; // Not needed for X moment? Actually need Y for spanwise distribution but we simplify to finding the Mean Geometric Chord and its X location
-    
-    const ac_X = absMacLE_X + 0.25 * mac;
+    // 2. Taper Ratio (lambda)
+    // Avoid division by zero
+    const lambda = Cr > 0 ? Ct / Cr : 1;
 
-    totalArea += area;
-    totalMacMoment += area * mac;
-    totalAcMomentX += area * ac_X;
-    totalSpan += h;
+    // 3. Panel MAC Length (MACi)
+    const MACi = (2/3) * Cr * ((1 + lambda + Math.pow(lambda, 2)) / (1 + lambda));
 
-    // Prep for next panel
-    currentY += h;
-    currentRootLE_X += sweep;
-    currentRoot = tip;
+    // 4. Panel MAC Spanwise Position (Y_mac_i) relative to panel root
+    const Y_mac_i = (b / 6) * ((1 + 2 * lambda) / (1 + lambda));
+
+    // 5. Panel MAC LE X Position (X_LE_mac_i) relative to panel root LE
+    // Interpolate sweep along span: X = Y * (sweep / b)
+    const X_LE_mac_i_local = b > 0 ? Y_mac_i * (sweep / b) : 0;
+    
+    // Absolute X relative to Surface Root
+    const X_LE_mac_i_global = currentX_LE + X_LE_mac_i_local;
+
+    // 6. Panel AC Position (X_AC_i)
+    // AC is typically at 25% of MAC
+    const X_AC_i = X_LE_mac_i_global + (0.25 * MACi);
+
+    // Accumulate weighted values
+    sumArea += Si;
+    sumAreaMac += Si * MACi;
+    sumAreaAcX += Si * X_AC_i;
+    totalSpanHalf += b;
+
+    // Prepare for next panel
+    currentRoot = Ct;
+    currentX_LE += sweep;
   });
 
-  const meanMac = totalArea > 0 ? totalMacMoment / totalArea : 0;
-  const meanAcX = totalArea > 0 ? totalAcMomentX / totalArea : 0;
-  
-  // Back-calculate the LE of the Mean Aerodynamic Chord
-  const meanMacLE_X = meanAcX - 0.25 * meanMac;
+  const totalArea = sumArea * 2; // Both sides
+  const globalMAC = sumArea > 0 ? sumAreaMac / sumArea : 0;
+  const globalAcX = sumArea > 0 ? sumAreaAcX / sumArea : 0;
 
   return {
-    area: totalArea * 2, // Full wing (both sides)
-    span: totalSpan * 2,
-    mac: meanMac,
-    macPosition: { x: meanMacLE_X, y: 0 }, // Y is less critical for long. stability but computed effectively
-    acPosition: { x: meanAcX, y: 0 },
-    aspectRatio: (totalSpan * 2) ** 2 / (totalArea * 2),
+    area: totalArea,
+    span: totalSpanHalf * 2,
+    mac: globalMAC,
+    acX: globalAcX,
     rootChord: rootChord
   };
 };
@@ -155,44 +149,52 @@ export const CGCalculator: React.FC = () => {
   const [staticMargin, setStaticMargin] = useState(10); // %
   const [tailEff, setTailEff] = useState(0.9); // Tail Efficiency
 
-  // Fuselage
+  // Fuselage (Standard Tube approx)
   const [fuseWidth, setFuseWidth] = useState(8);
   const [fuseLength, setFuseLength] = useState(90);
   const [fuseNose, setFuseNose] = useState(20); // Nose overhang from Wing LE
 
   // --- Calculations ---
   const results = useMemo(() => {
+    // Step A: Main Wing
     const wing = calculateSurface(wingRoot, wingPanels);
-    
+
     let tail: SurfaceAnalysis;
-    let npPosition: number;
-    let vBar = 0;
-    let lTail = 0;
+    let npPosition = 0; // Neutral Point X relative to Wing LE
+    let vBar = 0; // Tail Volume Coeff
+    let fuselagePenalty = 0;
 
     if (isFlyingWing) {
-      // Flying Wing Mode: Ignore tail and fuselage moments for basic calc
-      // NP is effectively the Wing's AC
-      // Create a zeroed tail for type safety
-      tail = { area: 0, span: 0, mac: 0, macPosition: {x:0,y:0}, acPosition: {x:0,y:0}, aspectRatio: 0, rootChord: 0 };
-      npPosition = wing.acPosition.x;
+       // Flying Wing: NP is just the Wing's AC
+       tail = { area: 0, span: 0, mac: 0, acX: 0, rootChord: 0 };
+       npPosition = wing.acX;
     } else {
-      // Conventional Mode
-      tail = calculateSurface(tailRoot, tailPanels);
-      
-      // Adjust Tail X positions by Distance D
-      const tailAcX_Global = tail.acPosition.x + distWingTail;
-      
-      const numerator = (wing.acPosition.x * wing.area) + (tailAcX_Global * tail.area * tailEff);
-      const denominator = wing.area + (tail.area * tailEff);
-      npPosition = denominator > 0 ? numerator / denominator : 0;
+       // Step B: Horizontal Tail
+       tail = calculateSurface(tailRoot, tailPanels);
+       
+       // Tail AC X Global = Dist + Tail AC Local
+       const tailAcX_Global = distWingTail + tail.acX;
 
-      // Stabilizer Volume
-      lTail = tailAcX_Global - wing.acPosition.x;
-      vBar = (wing.area > 0 && wing.mac > 0) ? (tail.area * lTail) / (wing.area * wing.mac) : 0;
+       // Step D: Neutral Point (Simplified Formula)
+       // X_NP = [ (X_AC_w * Sw) + (X_AC_t * St * eta) ] / [ Sw + (St * eta) ]
+       const numerator = (wing.acX * wing.area) + (tailAcX_Global * tail.area * tailEff);
+       const denominator = wing.area + (tail.area * tailEff);
+       
+       const npWingTail = denominator > 0 ? numerator / denominator : 0;
+       
+       // Step C: Fuselage Effect (Penalty)
+       // Shift NP forward by approx 1.5% of MAC for standard layout
+       fuselagePenalty = wing.mac * 0.015;
+       npPosition = npWingTail - fuselagePenalty;
+
+       // Tail Volume (Vbar)
+       // Vbar = (St * l_tail) / (Sw * MAC_w) where l_tail is distance between ACs
+       const lTail = tailAcX_Global - wing.acX;
+       vBar = (wing.area > 0 && wing.mac > 0) ? (tail.area * lTail) / (wing.area * wing.mac) : 0;
     }
 
-    // CG Calculation
-    // CG = NP - (StaticMargin/100 * MAC_wing)
+    // Step E: Final CG
+    // CG = NP - (SM% * MAC)
     const cgPosition = npPosition - ((staticMargin / 100) * wing.mac);
 
     return {
@@ -201,7 +203,7 @@ export const CGCalculator: React.FC = () => {
       npPosition,
       cgPosition,
       vBar,
-      lTail
+      fuselagePenalty
     };
   }, [wingRoot, wingPanels, tailRoot, tailPanels, distWingTail, staticMargin, tailEff, isFlyingWing]);
 
@@ -232,60 +234,76 @@ export const CGCalculator: React.FC = () => {
   };
 
   // --- Visualization Helpers ---
-  const svgWidth = 600;
-  const svgHeight = 400;
-  const padding = 40;
+  const svgWidth = 800;
+  const svgHeight = 500;
+  const padding = 60;
   
-  // Calculate bounding box for scaling
-  const maxSpan = Math.max(results.wing.span, isFlyingWing ? 0 : results.tail.span);
-  
-  // Calculate max length for scaling Y
+  // Scale Calculation
+  const maxSpanHalf = Math.max(results.wing.span/2, isFlyingWing ? 0 : results.tail.span/2);
+  // Total Length needed: From Nose (negative X) to Tail TE (positive X)
+  // Max X is Tail Root LE + Tail Total Sweep + Tail Tip Chord
   let maxLen = 0;
-  if (isFlyingWing) {
-      // Just the wing depth
-      // Need to find max depth of wing
-      let currentY = 0;
-      let maxY = 0;
-      // Rough approx: sum of chords + sweeps? No, just max Y coord of TE relative to origin
-      // Just use mac + some buffer for now, or trace nodes
-      let y = 0;
-      wingPanels.forEach(p => y += p.sweep);
-      maxLen = y + wingPanels[wingPanels.length-1].tip + 10;
-  } else {
-      maxLen = Math.max(fuseLength, distWingTail + results.tail.mac + 20);
-  }
+  let minLen = 0; // Negative X (Nose)
+  
+  // Calculate Wing Max Depth (X)
+  let wingMaxX = 0;
+  let curX = 0;
+  wingPanels.forEach(p => { curX += p.sweep; });
+  wingMaxX = curX + wingPanels[wingPanels.length-1].tip;
 
-  const scaleX = (svgWidth - padding * 2) / (maxSpan || 10);
-  const scaleY = (svgHeight - padding * 2) / (maxLen || 10);
+  if (isFlyingWing) {
+     maxLen = wingMaxX;
+     minLen = 0;
+  } else {
+     let tailMaxX = 0;
+     let tX = 0;
+     tailPanels.forEach(p => { tX += p.sweep; });
+     tailMaxX = distWingTail + tX + tailPanels[tailPanels.length-1].tip;
+     
+     maxLen = Math.max(fuseLength - fuseNose, tailMaxX);
+     minLen = -fuseNose;
+  }
+  
+  // Determine Scale Factor
+  const availableWidth = svgWidth - (padding * 2);
+  const availableHeight = svgHeight - (padding * 2);
+  
+  const totalGeoWidth = maxSpanHalf * 2.2; // A bit of buffer
+  const totalGeoHeight = (maxLen - minLen) * 1.2;
+  
+  const scaleX = availableWidth / totalGeoWidth;
+  const scaleY = availableHeight / totalGeoHeight;
   const scale = Math.min(scaleX, scaleY);
   
-  const originX = svgWidth / 2;
-  // If flying wing, center vertically a bit more
-  const originY = isFlyingWing ? padding : padding + (fuseNose * scale);
+  const originX = svgWidth / 2; // Screen Center X (Spanwise center)
+  // Screen Y origin (Datum 0,0) needs to be positioned such that Nose fits
+  const originY = padding + (Math.abs(minLen) * scale); 
 
-  const renderHalfWing = (root: number, panels: WingPanel[], startY: number, side: 1 | -1) => {
-     let d = `M ${originX} ${startY} `; // Root LE
-     let x = 0; 
-     let y = 0;
+  const renderHalfWingPath = (root: number, panels: WingPanel[], startY: number, side: 1 | -1) => {
+     let d = `M ${originX} ${startY} `; // Root LE (0,0 relative to startY)
+     let x_span = 0; 
+     let y_long = 0;
      
-     // LE
+     // Leading Edge
      panels.forEach(p => {
-         x += p.span;
-         y += p.sweep;
-         d += `L ${originX + (x * scale * side)} ${startY + y * scale} `;
+         x_span += p.span;
+         y_long += p.sweep;
+         // Screen X = originX + (span * side)
+         // Screen Y = originY + sweep
+         d += `L ${originX + (x_span * scale * side)} ${startY + y_long * scale} `;
      });
      
      // Tip Chord
      const tipChord = panels[panels.length-1].tip;
-     d += `L ${originX + (x * scale * side)} ${startY + (y + tipChord) * scale} `;
+     d += `L ${originX + (x_span * scale * side)} ${startY + (y_long + tipChord) * scale} `;
      
-     // TE back to root
+     // Trailing Edge back to root
      for (let i = panels.length - 1; i >= 0; i--) {
          const p = panels[i];
-         x -= p.span;
-         y -= p.sweep;
+         x_span -= p.span;
+         y_long -= p.sweep;
          const chord = i === 0 ? root : panels[i-1].tip;
-         d += `L ${originX + (x * scale * side)} ${startY + (y + chord) * scale} `;
+         d += `L ${originX + (x_span * scale * side)} ${startY + (y_long + chord) * scale} `;
      }
      
      d += "Z";
@@ -413,7 +431,7 @@ export const CGCalculator: React.FC = () => {
 
           {!isFlyingWing && (
             <div className="mt-4 pt-4 border-t border-slate-700 animate-fade-in">
-               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Fuselage</label>
+               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Fuselage (Approx)</label>
                <div className="grid grid-cols-3 gap-2">
                   <InputGroup label="Length" value={fuseLength} onChange={setFuseLength} unit="cm" />
                   <InputGroup label="Width" value={fuseWidth} onChange={setFuseWidth} unit="cm" />
@@ -430,24 +448,31 @@ export const CGCalculator: React.FC = () => {
         {/* Main Results */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-5 rounded-xl border bg-indigo-900/20 border-indigo-500/50">
-             <h3 className="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-2">Aircraft CG (Center of Gravity)</h3>
+             <h3 className="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-2">Center of Gravity (CG)</h3>
              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold text-white">{results.cgPosition.toFixed(2)} cm</span>
-                <span className="text-sm text-indigo-300">from Wing LE</span>
+                <span className="text-4xl font-bold text-white">{results.cgPosition.toFixed(1)} cm</span>
              </div>
-             <p className="text-xs text-indigo-400 mt-1">
-               @ {((results.cgPosition - results.wing.macPosition.x) / results.wing.mac * 100).toFixed(1)}% MAC
+             <p className="text-sm font-medium text-indigo-200 mt-1">
+               from Wing Leading Edge
+             </p>
+             <p className="text-xs text-indigo-400 mt-2">
+               @ {((results.cgPosition / results.wing.mac) * 100).toFixed(1)}% MAC
              </p>
           </div>
           
           <div className="p-5 rounded-xl border bg-slate-800 border-slate-700">
              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Neutral Point (NP)</h3>
              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold text-white">{results.npPosition.toFixed(2)} cm</span>
+                <span className="text-4xl font-bold text-white">{results.npPosition.toFixed(1)} cm</span>
              </div>
              <p className="text-xs text-slate-500 mt-1">
                Limit of stability (SM = 0%)
              </p>
+             {!isFlyingWing && (
+               <p className="text-xs text-slate-600 mt-2">
+                 Includes ~{results.fuselagePenalty.toFixed(1)}cm fuselage penalty
+               </p>
+             )}
           </div>
         </div>
 
@@ -466,7 +491,7 @@ export const CGCalculator: React.FC = () => {
            </div>
            
            <div className={`grid ${isFlyingWing ? 'grid-cols-2' : 'grid-cols-3'} p-3 border-b border-slate-700/50 hover:bg-slate-700/30`}>
-             <div className="text-slate-400">Span</div>
+             <div className="text-slate-400">Total Span</div>
              <div>{Math.round(results.wing.span)} cm</div>
              {!isFlyingWing && <div>{Math.round(results.tail.span)} cm</div>}
            </div>
@@ -476,13 +501,13 @@ export const CGCalculator: React.FC = () => {
              <div>{results.wing.mac.toFixed(1)} cm</div>
              {!isFlyingWing && <div>{results.tail.mac.toFixed(1)} cm</div>}
            </div>
-
-           <div className={`grid ${isFlyingWing ? 'grid-cols-2' : 'grid-cols-3'} p-3 border-b border-slate-700/50 hover:bg-slate-700/30`}>
-             <div className="text-slate-400">Aspect Ratio</div>
-             <div>{results.wing.aspectRatio.toFixed(1)}</div>
-             {!isFlyingWing && <div>{results.tail.aspectRatio.toFixed(1)}</div>}
-           </div>
            
+           <div className={`grid ${isFlyingWing ? 'grid-cols-2' : 'grid-cols-3'} p-3 border-b border-slate-700/50 hover:bg-slate-700/30`}>
+             <div className="text-slate-400">AC Position (Local)</div>
+             <div>{results.wing.acX.toFixed(1)} cm</div>
+             {!isFlyingWing && <div>{results.tail.acX.toFixed(1)} cm</div>}
+           </div>
+
            {!isFlyingWing && (
             <div className="grid grid-cols-3 p-3 bg-slate-900/30">
                 <div className="text-slate-400">Stabilizer Vol (Vbar)</div>
@@ -501,6 +526,10 @@ export const CGCalculator: React.FC = () => {
                 </div>
 
                 <svg width="100%" height="100%" viewBox={`0 0 ${svgWidth} ${svgHeight}`} preserveAspectRatio="xMidYMin meet">
+                    {/* Datum Line */}
+                    <line x1="0" y1={originY} x2={svgWidth} y2={originY} stroke="#f43f5e" strokeWidth="1" strokeDasharray="5 5" opacity="0.5" />
+                    <text x="10" y={originY - 5} fill="#f43f5e" fontSize="10" opacity="0.7">DATUM (0,0) - WING ROOT LE</text>
+
                     {/* Fuselage - Only if conventional */}
                     {!isFlyingWing && (
                         <rect 
@@ -515,53 +544,49 @@ export const CGCalculator: React.FC = () => {
                     )}
 
                     {/* Wing Right */}
-                    <path d={renderHalfWing(wingRoot, wingPanels, originY, 1)} fill="rgba(255, 255, 255, 0.1)" stroke="#cbd5e1" strokeWidth="1.5" />
+                    <path d={renderHalfWingPath(wingRoot, wingPanels, originY, 1)} fill="rgba(59, 130, 246, 0.1)" stroke="#60a5fa" strokeWidth="1.5" />
                     {/* Wing Left */}
-                    <path d={renderHalfWing(wingRoot, wingPanels, originY, -1)} fill="rgba(255, 255, 255, 0.1)" stroke="#cbd5e1" strokeWidth="1.5" />
+                    <path d={renderHalfWingPath(wingRoot, wingPanels, originY, -1)} fill="rgba(59, 130, 246, 0.1)" stroke="#60a5fa" strokeWidth="1.5" />
 
                     {/* Tail - Only if conventional */}
                     {!isFlyingWing && (
                         <>
-                            <path d={renderHalfWing(tailRoot, tailPanels, originY + distWingTail*scale, 1)} fill="rgba(255, 255, 255, 0.1)" stroke="#cbd5e1" strokeWidth="1.5" />
-                            <path d={renderHalfWing(tailRoot, tailPanels, originY + distWingTail*scale, -1)} fill="rgba(255, 255, 255, 0.1)" stroke="#cbd5e1" strokeWidth="1.5" />
+                            <path d={renderHalfWingPath(tailRoot, tailPanels, originY + distWingTail*scale, 1)} fill="rgba(255, 255, 255, 0.1)" stroke="#94a3b8" strokeWidth="1.5" />
+                            <path d={renderHalfWingPath(tailRoot, tailPanels, originY + distWingTail*scale, -1)} fill="rgba(255, 255, 255, 0.1)" stroke="#94a3b8" strokeWidth="1.5" />
                         </>
                     )}
 
                     {/* Markers Group */}
                     <g>
-                       {/* Wing MAC Line */}
-                       <line 
-                         x1={originX - (results.wing.span/2)*scale} 
-                         y1={originY + results.wing.macPosition.x*scale} 
-                         x2={originX + (results.wing.span/2)*scale} 
-                         y2={originY + results.wing.macPosition.x*scale} 
-                         stroke="#3b82f6" 
-                         strokeWidth="1" 
-                         strokeDasharray="4 2" 
-                         opacity="0.5"
-                       />
+                       {/* Wing MAC Line (Approximation drawn at center span) */}
+                       {/* We visualize the MAC length at the MAC spanwise position? Too complex for 2D. Just draw markers on center line. */}
+
+                       {/* Wing AC Marker */}
+                       <circle cx={originX} cy={originY + results.wing.acX*scale} r="3" fill="#60a5fa" />
+                       <text x={originX + 6} y={originY + results.wing.acX*scale + 3} fill="#60a5fa" fontSize="9">ACw</text>
 
                        {/* NP Marker */}
                        <circle cx={originX} cy={originY + results.npPosition*scale} r="4" fill="#22c55e" />
-                       <text x={originX + 10} y={originY + results.npPosition*scale + 4} fill="#22c55e" fontSize="10" fontWeight="bold">NP</text>
+                       <text x={originX + 8} y={originY + results.npPosition*scale + 4} fill="#22c55e" fontSize="10" fontWeight="bold">NP</text>
 
                        {/* CG Marker */}
-                       <circle cx={originX} cy={originY + results.cgPosition*scale} r="5" fill="#ef4444" stroke="white" strokeWidth="2" />
+                       <circle cx={originX} cy={originY + results.cgPosition*scale} r="6" fill="#ef4444" stroke="white" strokeWidth="2" />
+                       {/* CG Crosshair */}
                        <line 
-                         x1={originX - 40} 
+                         x1={originX - 60} 
                          y1={originY + results.cgPosition*scale} 
-                         x2={originX + 40} 
+                         x2={originX + 60} 
                          y2={originY + results.cgPosition*scale} 
                          stroke="#ef4444" 
                          strokeWidth="2" 
                          strokeDasharray="4 4"
                        />
-                       <text x={originX - 55} y={originY + results.cgPosition*scale + 3} fill="#ef4444" fontSize="12" fontWeight="bold">CG</text>
+                       <text x={originX - 75} y={originY + results.cgPosition*scale + 4} fill="#ef4444" fontSize="14" fontWeight="bold">CG</text>
                     </g>
                 </svg>
             </div>
             <div className="w-full flex justify-between text-xs text-slate-500 mt-2 px-2">
-               <span>Origin: Wing Root LE</span>
+               <span>Origin: Wing Root Leading Edge</span>
                <span>{isFlyingWing ? "Flying Wing Mode" : "Conventional Configuration"}</span>
             </div>
         </div>
