@@ -177,15 +177,15 @@ export const OverallSetup: React.FC = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pb-20">
+    <div className="flex flex-col gap-8 pb-20 w-full">
       
       {/* --- FORM SECTION --- */}
-      <div className="lg:col-span-8 space-y-4">
+      <div className="w-full space-y-6">
         
         {/* Row 1: Airplane */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden shadow-sm">
           <SectionHeader title="Airplane" />
-          <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <Select 
               label="Wing Type:" 
               value={reqs.wingType} 
@@ -225,7 +225,7 @@ export const OverallSetup: React.FC = () => {
         </div>
 
         {/* Row 2: Performance */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden shadow-sm">
           <SectionHeader title="Desired Performance" />
           <div className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
@@ -270,9 +270,9 @@ export const OverallSetup: React.FC = () => {
         </div>
 
         {/* Row 3: Battery & General */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
            {/* Battery */}
-           <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+           <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden shadow-sm">
              <SectionHeader title="Battery Cell" />
              <div className="p-4 grid grid-cols-2 gap-4">
                <div className="flex flex-col">
@@ -297,7 +297,7 @@ export const OverallSetup: React.FC = () => {
            </div>
 
            {/* General */}
-           <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+           <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden shadow-sm">
              <SectionHeader title="General" />
              <div className="p-4 grid grid-cols-1 gap-4">
                <DualUnitInput 
@@ -312,9 +312,9 @@ export const OverallSetup: React.FC = () => {
         </div>
 
         {/* Row 4: Motor & Propeller */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
            {/* Motor */}
-           <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+           <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden shadow-sm">
              <SectionHeader title="Motor" />
              <div className="p-4 grid grid-cols-2 gap-4">
                <div className="flex flex-col">
@@ -343,7 +343,7 @@ export const OverallSetup: React.FC = () => {
            </div>
 
            {/* Propeller */}
-           <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+           <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden shadow-sm">
              <SectionHeader title="Propeller" />
              <div className="p-4 grid grid-cols-3 gap-4">
                <div className="flex flex-col">
@@ -387,11 +387,11 @@ export const OverallSetup: React.FC = () => {
       </div>
 
       {/* --- RESULTS / AI SECTION --- */}
-      <div className="lg:col-span-4 space-y-4">
-        <div className="bg-indigo-900/20 p-6 rounded-lg border border-indigo-500/50 sticky top-24">
+      <div className="w-full">
+        <div className="bg-indigo-900/20 p-6 rounded-lg border border-indigo-500/50 shadow-lg">
            <h2 className="text-xl font-bold text-white mb-4">Setup Recommendation</h2>
            <p className="text-slate-400 text-sm mb-6">
-             Based on the requirements on the left, let our AI engine calculate the optimal component setup for your aircraft.
+             Based on the requirements above, let our AI engine calculate the optimal component setup for your aircraft.
            </p>
 
            <button 
@@ -415,7 +415,7 @@ export const OverallSetup: React.FC = () => {
           </button>
 
           {aiAnalysis ? (
-             <div className="prose prose-invert prose-sm max-w-none text-slate-200 animate-fade-in">
+             <div className="prose prose-invert prose-sm max-w-none text-slate-200 animate-fade-in bg-slate-800/30 p-4 rounded-lg border border-indigo-500/20">
                 <ReactMarkdown>{aiAnalysis}</ReactMarkdown>
              </div>
           ) : (
